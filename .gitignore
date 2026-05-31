@@ -1,0 +1,34 @@
+# Binaries
+edcode
+harness
+
+# Config files (user-specific, don't commit)
+edcode.yaml
+.edcode.yaml
+
+# Data directories (session memory, enhancements, skills)
+.edcode/
+.harness/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Skills (user-created, optional)
+.skills/SKILL.md

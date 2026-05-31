@@ -88,9 +88,26 @@ flowchart TB
 
 ```bash
 git clone <repo> && cd edcode
-go build -o edcode ./cmd/edcode/
-./edcode --init
+make install    # installs to ~/.local/bin/edcode (no sudo)
 ```
+
+Or build manually:
+
+```bash
+export PATH="/opt/homebrew/bin:$PATH"
+go build -o edcode ./cmd/edcode/
+```
+
+### First Run
+
+```bash
+edcode --configure    # interactive provider setup (providers, models, agents)
+```
+
+On first run, `edcode` auto-starts the configure wizard if no config is found. You can also run it manually anytime with `--configure`.
+
+```bash
+./edcode --init       # writes a default config file (non-interactive)
 
 ### Configuration
 
@@ -628,6 +645,19 @@ A reusable skill for performing thorough code reviews.
 ## License
 
 MIT
+
+## Makefile
+
+| Command | Description |
+|---------|-------------|
+| `make install` | Install to `~/.local/bin/edcode` (no sudo) |
+| `make install-system` | Install to `/usr/local/bin/edcode` (requires sudo) |
+| `make build` | Build binary in current directory |
+| `make configure` | Run interactive provider setup |
+| `make reset` | Remove all config and data (`edcode.yaml` + `~/.edcode/`) |
+| `make uninstall` | Remove installed binary |
+| `make clean` | Remove build artifacts |
+| `make reinstall` | Uninstall, clean, then reinstall |
 
 ---
 

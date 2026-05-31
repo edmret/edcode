@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/edmundo/edcode/internal/banner"
+	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
 
@@ -383,14 +383,160 @@ func promptBool(reader *bufio.Reader, prompt string, def bool) bool {
 }
 
 func multiSelect(prompt string, items []ProviderDef) []ProviderDef {
-	// Simple non-interactive fallback that works reliably in all terminals
-	reader := bufio.NewReader(os.Stdin)
+	// Calculate max label length for alignment
+	maxLabelLen := 0
+	for _, p := range items {
+		label := p.Label
+		if p.IsCustom {
+			label += " (custom)"
+		}
+		if len(label) > maxLabelLen {
+			maxLabelLen = len(label)
+		}
+	}
 
+	fullRender := func(sel []bool, cur int) string {
+		var out string
+		out += "\033[H\033[J"
+		// Logo starts with \n in the raw string literal. Split on \n and
+		// rejoin with \r\n so each line starts at column 0 in raw mode.
+		logoLines := strings.Split(banner.Logo, "\n")
+		for _, line := range logoLines {
+			out += line + "\r\n"
+		}
+		out += prompt + "\r\n"
+		out += "\r\n"
+		out += "  up/down: navigate  |  space: toggle  |  enter: confirm  |  q: quit\r\n"
+		out += "\r\n"
+		for i, p := range items {
+			marker := " "
+			if i == cur {
+				marker = ">"
+			}
+			checkbox := "[ ]"
+			if sel[i] {
+				checkbox = "[x]"
+			}
+			label := p.Label
+			if p.IsCustom {
+				label += " (custom)"
+			}
+			padded := label + strings.Repeat(" ", maxLabelLen-len(label))
+			out += fmt.Sprintf("  %s %s  %s\r\n", marker, checkbox, padded)
+		}
+		out += fmt.Sprintf("  %d selected\r\n", countSelected(sel))
+		return out
+	}
+
+	// Print initial state before raw mode using \r\n (works in both cooked and raw)
+	fmt.Print(fullRender(make([]bool, len(items)), 0))
+
+	// Enter raw mode for keystroke reading
+	fd := int(os.Stdin.Fd())
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		fmt.Println()
+		fallbackMultiSelect(prompt, items)
+		os.Exit(0)
+		return nil
+	}
+	defer term.Restore(fd, oldState)
+
+	// Hide cursor
+	fmt.Print("\033[?25l")
+
+	selected := make([]bool, len(items))
+	cursor := 0
+
+	buf := make([]byte, 3)
+	for {
+		n, err := os.Stdin.Read(buf)
+		if err != nil || n == 0 {
+			break
+		}
+
+		changed := false
+
+		// Ctrl+C or Ctrl+D
+		if buf[0] == 3 || buf[0] == 4 {
+			fmt.Print("\033[?25h")
+			term.Restore(fd, oldState)
+			fmt.Println()
+			os.Exit(1)
+		}
+
+		// Enter
+		if buf[0] == 13 || buf[0] == 10 {
+			fmt.Print("\033[?25h")
+			var result []ProviderDef
+			for i, sel := range selected {
+				if sel {
+					result = append(result, items[i])
+				}
+			}
+			return result
+		}
+
+		// Escape
+		if buf[0] == 27 && n == 1 {
+			fmt.Print("\033[?25h")
+			return nil
+		}
+
+		// q
+		if buf[0] == 113 || buf[0] == 81 {
+			fmt.Print("\033[?25h")
+			return nil
+		}
+
+		// Space - toggle
+		if buf[0] == 32 {
+			selected[cursor] = !selected[cursor]
+			changed = true
+		}
+
+		// Arrow keys
+		if n >= 3 && buf[0] == 27 && buf[1] == 91 {
+			switch buf[2] {
+			case 65: // up
+				if cursor > 0 {
+					cursor--
+					changed = true
+				}
+			case 66: // down
+				if cursor < len(items)-1 {
+					cursor++
+					changed = true
+				}
+			}
+		}
+
+		if changed {
+			out := fullRender(selected, cursor)
+			fmt.Print(out)
+		}
+	}
+
+	fmt.Print("\033[?25h")
+	return nil
+}
+
+func countSelected(sel []bool) int {
+	count := 0
+	for _, s := range sel {
+		if s {
+			count++
+		}
+	}
+	return count
+}
+
+func fallbackMultiSelect(prompt string, items []ProviderDef) []ProviderDef {
+	reader := bufio.NewReader(os.Stdin)
 	fmt.Println()
 	fmt.Println(prompt)
 	fmt.Println()
 
-	// Calculate max label length for alignment
 	maxLabelLen := 0
 	for _, p := range items {
 		label := p.Label
@@ -422,20 +568,14 @@ func multiSelect(prompt string, items []ProviderDef) []ProviderDef {
 	var selected []ProviderDef
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
-		idx, err := strconv.Atoi(part)
-		if err == nil && idx >= 1 && idx <= len(items) {
-			selected = append(selected, items[idx-1])
+		idx, err := fmt.Sscanf(part, "%d", new(int))
+		if err == nil && idx == 1 {
+			var n int
+			fmt.Sscanf(part, "%d", &n)
+			if n >= 1 && n <= len(items) {
+				selected = append(selected, items[n-1])
+			}
 		}
 	}
 	return selected
-}
-
-func countSelected(sel []bool) int {
-	count := 0
-	for _, s := range sel {
-		if s {
-			count++
-		}
-	}
-	return count
 }

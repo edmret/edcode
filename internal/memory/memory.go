@@ -28,7 +28,7 @@ type MemoryEntry struct {
 	CreatedAt time.Time       `json:"created_at"`
 	UpdatedAt time.Time       `json:"updated_at"`
 	Score     float64         `json:"score"`
-	Source    string          `json:"source"`
+	Source    string          `json:"source"` // "workspace" or "global"
 }
 
 type MemoryStore struct {
@@ -36,17 +36,24 @@ type MemoryStore struct {
 	entries   []MemoryEntry
 	dataDir   string
 	sessionID string
+	globalDir string
 }
 
-func NewMemoryStore(dataDir string) *MemoryStore {
+func NewMemoryStore(dataDir, globalDir string) *MemoryStore {
 	if dataDir == "" {
 		home, _ := os.UserHomeDir()
-		dataDir = filepath.Join(home, ".edcode", "memory")
+		dataDir = filepath.Join(home, ".edcode-workspace", "memory")
+	}
+	if globalDir == "" {
+		home, _ := os.UserHomeDir()
+		globalDir = filepath.Join(home, ".edcode", "memory")
 	}
 	os.MkdirAll(dataDir, 0755)
+	os.MkdirAll(globalDir, 0755)
 	return &MemoryStore{
-		entries: []MemoryEntry{},
-		dataDir: dataDir,
+		entries:   []MemoryEntry{},
+		dataDir:   dataDir,
+		globalDir: globalDir,
 	}
 }
 
@@ -203,7 +210,14 @@ func (ms *MemoryStore) GetInstructions() string {
 }
 
 func (ms *MemoryStore) persistEntry(entry MemoryEntry) {
-	path := filepath.Join(ms.dataDir, fmt.Sprintf("session_%s.gob", ms.sessionID))
+	// Persist to workspace dir for session-level, global dir for long-term
+	var dir string
+	if entry.Level == LevelSession {
+		dir = ms.dataDir
+	} else {
+		dir = ms.globalDir
+	}
+	path := filepath.Join(dir, fmt.Sprintf("session_%s.gob", ms.sessionID))
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return
@@ -214,7 +228,17 @@ func (ms *MemoryStore) persistEntry(entry MemoryEntry) {
 }
 
 func (ms *MemoryStore) LoadSession(sessionID string) error {
+	// Load from workspace dir
 	path := filepath.Join(ms.dataDir, fmt.Sprintf("session_%s.gob", sessionID))
+	if err := ms.loadFromFile(path); err != nil {
+		return err
+	}
+	// Load from global dir
+	globalPath := filepath.Join(ms.globalDir, fmt.Sprintf("session_%s.gob", sessionID))
+	return ms.loadFromFile(globalPath)
+}
+
+func (ms *MemoryStore) loadFromFile(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -237,12 +261,23 @@ func (ms *MemoryStore) LoadSession(sessionID string) error {
 }
 
 func (ms *MemoryStore) LoadAllSessions() error {
+	// Load from workspace dir
 	files, err := filepath.Glob(filepath.Join(ms.dataDir, "session_*.gob"))
 	if err != nil {
 		return err
 	}
 	for _, f := range files {
-		if err := ms.LoadSession(strings.TrimSuffix(strings.TrimPrefix(filepath.Base(f), "session_"), ".gob")); err != nil {
+		if err := ms.loadFromFile(f); err != nil {
+			continue
+		}
+	}
+	// Load from global dir
+	globalFiles, err := filepath.Glob(filepath.Join(ms.globalDir, "session_*.gob"))
+	if err != nil {
+		return err
+	}
+	for _, f := range globalFiles {
+		if err := ms.loadFromFile(f); err != nil {
 			continue
 		}
 	}
@@ -296,15 +331,15 @@ func (ms *MemoryStore) SummarizeRecent(since time.Time) string {
 }
 
 type SessionSummary struct {
-	SessionID   string    `json:"session_id"`
-	StartedAt   time.Time `json:"started_at"`
-	EndedAt     time.Time `json:"ended_at"`
-	Goals       []string  `json:"goals"`
-	Achieved    []string  `json:"achieved"`
-	KeyDecisions []string `json:"key_decisions"`
-	Lessons     []string  `json:"lessons"`
-	FilesChanged int      `json:"files_changed"`
-	TokenUsage  int       `json:"token_usage"`
+	SessionID    string    `json:"session_id"`
+	StartedAt    time.Time `json:"started_at"`
+	EndedAt      time.Time `json:"ended_at"`
+	Goals        []string  `json:"goals"`
+	Achieved     []string  `json:"achieved"`
+	KeyDecisions []string  `json:"key_decisions"`
+	Lessons      []string  `json:"lessons"`
+	FilesChanged int       `json:"files_changed"`
+	TokenUsage   int       `json:"token_usage"`
 }
 
 func (ms *MemoryStore) SaveSessionSummary(summary SessionSummary) {

@@ -18,6 +18,7 @@ import (
 	"github.com/edmundo/edcode/internal/skills"
 	"github.com/edmundo/edcode/internal/tool"
 	"github.com/edmundo/edcode/internal/tool/mcp"
+	"github.com/edmundo/edcode/internal/workspace"
 )
 
 type App struct {
@@ -32,6 +33,9 @@ type App struct {
 	ContextMgr  *ctxmgr.Manager
 	Enhancer    *enhance.Engine
 	Skills      *skills.Manager
+	Workspace   *workspace.WorkspaceManager
+	WorkspaceInfo *workspace.Info
+	AgentsMD    string // AGENTS.md content loaded from workspace
 }
 
 type Option func(*App)
@@ -79,15 +83,46 @@ func (h *App) Init() error {
 	}
 	h.ProviderReg = reg
 
-	h.Memory = memory.NewMemoryStore(filepath.Join(h.Workdir, ".edcode", "memory"))
+	// Initialize workspace manager
+	h.Workspace = workspace.New(h.Workdir)
+	h.WorkspaceInfo = h.Workspace.LoadInfo()
+
+	// Ensure workspace directory exists
+	if !h.WorkspaceInfo.HasWorkspace {
+		if err := h.Workspace.EnsureWorkspace(); err != nil {
+			log.Printf("warn: ensure workspace: %v", err)
+		} else {
+			h.WorkspaceInfo.HasWorkspace = true
+			h.WorkspaceInfo.WorkspaceDir = filepath.Join(h.Workdir, workspace.WorkspaceDirName)
+			h.WorkspaceInfo.EnhanceDir = filepath.Join(h.WorkspaceInfo.WorkspaceDir, "enhance")
+			h.WorkspaceInfo.MemoryDir = filepath.Join(h.WorkspaceInfo.WorkspaceDir, "memory")
+		}
+	}
+
+	// Load workspace config overrides
+	wsCfg, err := config.LoadWorkspaceConfig(h.Workdir)
+	if err != nil {
+		log.Printf("warn: load workspace config: %v", err)
+	}
+	h.Config = config.MergeWorkspace(h.Config, wsCfg)
+
+	// Two-tier memory: workspace dir + global dir
+	h.Memory = memory.NewMemoryStore(h.WorkspaceInfo.MemoryDir, h.WorkspaceInfo.GlobalMemory)
 	h.Memory.LoadAllSessions()
 	h.ContextMgr = ctxmgr.NewManager(h.Config.Session.MaxTokens, h.Memory)
-	h.Enhancer = enhance.NewEngine(filepath.Join(h.Workdir, ".edcode", "enhance"))
+
+	// Two-tier enhance: workspace sessions + global insights
+	h.Enhancer = enhance.NewEngine(h.WorkspaceInfo.EnhanceDir, h.WorkspaceInfo.GlobalEnhance)
+
+	// Skills: workspace + global paths
 	h.Skills = skills.NewManager([]string{
 		filepath.Join(h.Workdir, ".skills"),
 		filepath.Join(h.Workdir, "skills"),
 		filepath.Join(os.Getenv("HOME"), ".edcode", "skills"),
 	})
+
+	// Load AGENTS.md content for system prompt
+	h.AgentsMD = h.WorkspaceInfo.AgentsMD
 
 	for _, pc := range h.Config.MCP {
 		if pc.Enabled {
@@ -160,19 +195,20 @@ func (h *App) Init() error {
 		mw.AddPostModel(h.GlobalMW.RunPostModel)
 
 		h.Agents[name] = &agent.EnhancedAgent{
-			Name:       name,
-			Config:     ac,
-			Provider:   p,
-			ModelRef:   modelRef,
-			Tools:      toolMgr,
-			MCPClients: h.MCPClients,
-			Middleware:  mw,
-			SessionMgr: h.SessionMgr,
-			Workdir:    h.Workdir,
-			Memory:     h.Memory,
-			ContextMgr: h.ContextMgr,
-			Enhancer:   h.Enhancer,
-			Skills:     h.Skills,
+			Name:           name,
+			Config:         ac,
+			Provider:       p,
+			ModelRef:       modelRef,
+			Tools:          toolMgr,
+			MCPClients:     h.MCPClients,
+			Middleware:     mw,
+			SessionMgr:     h.SessionMgr,
+			Workdir:        h.Workdir,
+			Memory:         h.Memory,
+			ContextMgr:     h.ContextMgr,
+			Enhancer:       h.Enhancer,
+			Skills:         h.Skills,
+			WorkspaceAgentsMD: h.AgentsMD,
 		}
 	}
 
@@ -270,6 +306,14 @@ func (h *App) ListModels() []string {
 
 func (h *App) ListOptimizations(agentName string) []string {
 	return h.Enhancer.GetOptimizations(agentName)
+}
+
+func (h *App) ListWorkspaces() string {
+	return h.Workspace.ListText()
+}
+
+func (h *App) PruneWorkspaces() []string {
+	return h.Workspace.Prune()
 }
 
 func (h *App) Close() {

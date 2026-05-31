@@ -646,6 +646,55 @@ A reusable skill for performing thorough code reviews.
 
 MIT
 
+## Workspace System
+
+EdCode uses a **two-tier memory and enhancement system** that combines global user-level learning with project-specific isolation.
+
+### Directory Structure
+
+```
+~/.edcode/                          # GLOBAL (user-level)
+├── edcode.yaml                     # Main config (providers, agents, etc.)
+├── workspaces.json                 # Workspace index (auto-managed)
+├── enhance/                        # Global auto-enhancement (cross-project insights)
+├── memory/                         # Global long-term memory (insights, lessons)
+└── skills/                         # User's global skills
+
+{project}/                          # WORKSPACE (project-level)
+├── .edcode-workspace/              # Workspace data directory
+│   ├── enhance/                    # Project-specific session stats
+│   └── memory/                     # Project-specific memory
+├── AGENTS.md                       # Workspace instructions (shared with opencode/claude)
+├── .skills/                        # Workspace skills
+└── edcode.yaml                     # Optional: workspace config overrides
+```
+
+### How It Works
+
+1. **Global Memory** (`~/.edcode/`): Cross-project insights, lessons, and auto-enhancement tips. Shared across all projects — your agent gets smarter over time regardless of which project you're working on.
+
+2. **Workspace Memory** (`{project}/.edcode-workspace/`): Project-specific memory that stays isolated. Each project has its own session history, tool usage stats, and lessons.
+
+3. **AGENTS.md**: Place this file in your project root. EdCode automatically loads it and injects the content into every agent's system prompt. This works with opencode, Claude Code, and other harnesses — your project knowledge is shared across tools.
+
+4. **Workspace Index** (`~/.edcode/workspaces.json`): EdCode automatically tracks which directories you've run edcode in. Each project is registered with its path, name, and last-used timestamp.
+
+### Workspace Commands
+
+```bash
+# List all registered workspaces
+edcode --list-workspaces
+
+# Remove workspaces where .edcode-workspace/ no longer exists
+edcode --prune-workspaces
+```
+
+### Config Location
+
+After `make install`, the main config lives at `~/.edcode/edcode.yaml`. You can override the path with the `EDCODE_CONFIG` environment variable.
+
+Project-level overrides are stored in `{project}/.edcode-workspace/config.yaml` and merge with the global config.
+
 ## Makefile
 
 | Command | Description |

@@ -20,21 +20,22 @@ import (
 )
 
 type EnhancedAgent struct {
-	Name        string
-	Config      config.AgentConfig
-	Provider    provider.Provider
-	ModelRef    string
-	Tools       *tool.Manager
-	MCPClients  []*mcp.Client
-	Middleware  *middleware.Chain
-	SessionMgr  *session.Manager
-	SessionID   string
-	Workdir     string
-	Memory      *memory.MemoryStore
-	ContextMgr  *ctxmgr.Manager
-	Enhancer    *enhance.Engine
-	Skills      *skills.Manager
-	StartTime   time.Time
+	Name              string
+	Config            config.AgentConfig
+	Provider          provider.Provider
+	ModelRef          string
+	Tools             *tool.Manager
+	MCPClients        []*mcp.Client
+	Middleware        *middleware.Chain
+	SessionMgr        *session.Manager
+	SessionID         string
+	Workdir           string
+	Memory            *memory.MemoryStore
+	ContextMgr        *ctxmgr.Manager
+	Enhancer          *enhance.Engine
+	Skills            *skills.Manager
+	StartTime         time.Time
+	WorkspaceAgentsMD string // AGENTS.md content from workspace
 }
 
 type EnhancedStepResult struct {
@@ -66,6 +67,11 @@ func (a *EnhancedAgent) Execute(ctx context.Context, systemPrompt string, userPr
 		if loaded != "" {
 			systemPrompt += "\n\n" + loaded
 		}
+	}
+
+	// Inject workspace AGENTS.md instructions
+	if a.WorkspaceAgentsMD != "" {
+		systemPrompt += "\n\n## Workspace Instructions\n" + a.WorkspaceAgentsMD
 	}
 
 	if userPrompt != "" {

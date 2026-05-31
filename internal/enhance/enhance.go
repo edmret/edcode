@@ -1,6 +1,7 @@
 package enhance
 
 import (
+	"encoding/gob"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,10 +24,10 @@ type SessionRecord struct {
 }
 
 type AgentProfile struct {
-	Name          string
-	AvgSteps      float64
-	ToolFrequency map[string]int
-	SuccessRate   float64
+	Name           string
+	AvgSteps       float64
+	ToolFrequency  map[string]int
+	SuccessRate    float64
 	CommonFailures []string
 }
 
@@ -35,17 +36,28 @@ type Engine struct {
 	sessions    []SessionRecord
 	insights    []string
 	agentConfig map[string]*AgentProfile
+	dataDir     string // workspace enhance dir
+	globalDir   string // global enhance dir
 }
 
-func NewEngine(dataDir string) *Engine {
+func NewEngine(dataDir, globalDir string) *Engine {
 	if dataDir == "" {
 		home, _ := os.UserHomeDir()
-		dataDir = filepath.Join(home, ".edcode", "enhance")
+		dataDir = filepath.Join(home, ".edcode-workspace", "enhance")
+	}
+	if globalDir == "" {
+		home, _ := os.UserHomeDir()
+		globalDir = filepath.Join(home, ".edcode", "enhance")
 	}
 	os.MkdirAll(dataDir, 0755)
-	return &Engine{
+	os.MkdirAll(globalDir, 0755)
+	e := &Engine{
 		agentConfig: make(map[string]*AgentProfile),
+		dataDir:     dataDir,
+		globalDir:   globalDir,
 	}
+	e.loadInsights()
+	return e
 }
 
 func (e *Engine) RecordSession(s SessionRecord) {
@@ -65,6 +77,19 @@ func (e *Engine) RecordSession(s SessionRecord) {
 	} else {
 		p.SuccessRate = ((p.SuccessRate * float64(n-1)) + 0) / float64(n)
 	}
+	// Persist workspace session record
+	e.persistSession(s)
+}
+
+func (e *Engine) persistSession(s SessionRecord) {
+	path := filepath.Join(e.dataDir, "sessions.gob")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	enc := gob.NewEncoder(f)
+	enc.Encode(s)
 }
 
 func (e *Engine) sessionsByAgent(agent string) []SessionRecord {
@@ -81,6 +106,39 @@ func (e *Engine) AddInsight(content string, tags []string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.insights = append(e.insights, fmt.Sprintf("[%s] %s", strings.Join(tags, ","), content))
+	// Persist global insight
+	e.persistInsight(content, tags)
+}
+
+func (e *Engine) persistInsight(content string, tags []string) {
+	path := filepath.Join(e.globalDir, "insights.gob")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	enc := gob.NewEncoder(f)
+	enc.Encode(fmt.Sprintf("[%s] %s", strings.Join(tags, ","), content))
+}
+
+func (e *Engine) loadInsights() {
+	path := filepath.Join(e.globalDir, "insights.gob")
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		return
+	}
+	defer f.Close()
+	dec := gob.NewDecoder(f)
+	for {
+		var insight string
+		if err := dec.Decode(&insight); err != nil {
+			break
+		}
+		e.insights = append(e.insights, insight)
+	}
 }
 
 func (e *Engine) RecordErrorPattern(agentName, errorMsg string) {

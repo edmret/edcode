@@ -47,14 +47,14 @@ type AgentConfig struct {
 }
 
 type PermissionConfig struct {
-	Read    string   `yaml:"read"`
-	Write   string   `yaml:"write"`
-	Edit    string   `yaml:"edit"`
-	Bash    string   `yaml:"bash"`
-	Glob    string   `yaml:"glob"`
-	Grep    string   `yaml:"grep"`
-	Web     string   `yaml:"web"`
-	Custom  map[string]string `yaml:"custom"`
+	Read   string            `yaml:"read"`
+	Write  string            `yaml:"write"`
+	Edit   string            `yaml:"edit"`
+	Bash   string            `yaml:"bash"`
+	Glob   string            `yaml:"glob"`
+	Grep   string            `yaml:"grep"`
+	Web    string            `yaml:"web"`
+	Custom map[string]string `yaml:"custom"`
 }
 
 type PipelineConfig struct {
@@ -216,10 +216,17 @@ func resolveProviderEnv(cfg *Config) {
 	}
 }
 
+// DefaultPath returns the global config path at ~/.edcode/edcode.yaml.
 func DefaultPath() string {
 	if p := os.Getenv("EDCODE_CONFIG"); p != "" {
 		return p
 	}
+	home, _ := os.UserHomeDir()
+	p := filepath.Join(home, ".edcode", "edcode.yaml")
+	if _, err := os.Stat(p); err == nil {
+		return p
+	}
+	// Fallback to cwd if global config doesn't exist yet
 	cwd, _ := os.Getwd()
 	for _, name := range []string{"edcode.yaml", "edcode.yml", ".edcode.yaml"} {
 		p := filepath.Join(cwd, name)
@@ -227,5 +234,77 @@ func DefaultPath() string {
 			return p
 		}
 	}
-	return filepath.Join(cwd, "edcode.yaml")
+	return p
+}
+
+// LoadWorkspaceConfig loads workspace overrides from .edcode-workspace/config.yaml.
+func LoadWorkspaceConfig(workdir string) (*Config, error) {
+	cfg := Default()
+	p := filepath.Join(workdir, ".edcode-workspace", "config.yaml")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read workspace config: %w", err)
+	}
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("parse workspace config: %w", err)
+	}
+	return cfg, nil
+}
+
+// MergeWorkspace merges workspace config overrides into the base config.
+// Workspace values take priority over global values.
+func MergeWorkspace(base *Config, ws *Config) *Config {
+	if ws == nil {
+		return base
+	}
+	merged := *base
+
+	// Merge agents (workspace agents override global)
+	for name, ac := range ws.Agents {
+		if existing, ok := merged.Agents[name]; ok {
+			if ac.Description != "" {
+				existing.Description = ac.Description
+			}
+			if ac.Model != "" {
+				existing.Model = ac.Model
+			}
+			if ac.Prompt != "" {
+				existing.Prompt = ac.Prompt
+			}
+			if ac.MaxSteps > 0 {
+				existing.MaxSteps = ac.MaxSteps
+			}
+			if ac.Temperature > 0 {
+				existing.Temperature = ac.Temperature
+			}
+			if len(ac.Tools) > 0 {
+				existing.Tools = ac.Tools
+			}
+			merged.Agents[name] = existing
+		}
+	}
+
+	// Merge pipeline steps
+	if len(ws.Pipeline.Steps) > 0 {
+		merged.Pipeline = ws.Pipeline
+	}
+
+	// Merge MCP
+	for name, mc := range ws.MCP {
+		merged.MCP[name] = mc
+	}
+
+	// Merge session config
+	if ws.Session.MaxTokens > 0 {
+		merged.Session.MaxTokens = ws.Session.MaxTokens
+	}
+	merged.Session.AutoCompact = ws.Session.AutoCompact
+	if ws.Session.MaxMessages > 0 {
+		merged.Session.MaxMessages = ws.Session.MaxMessages
+	}
+
+	return &merged
 }

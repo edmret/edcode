@@ -2,7 +2,8 @@ package banner
 
 import "fmt"
 
-const Logo = `________  _______          ______    ______   _______   ________
+const Logo = `
+ ________  _______          ______    ______   _______   ________
 |        \|       \        /      \  /      \ |       \ |        \
 | $$$$$$$$| $$$$$$$\      |  $$$$$$\|  $$$$$$\| $$$$$$$\| $$$$$$$$
 | $$__    | $$  | $$      | $$   \$$| $$  | $$| $$  | $$| $$
@@ -14,18 +15,16 @@ const Logo = `________  _______          ______    ______   _______   ________
 
 const Tagline = "your AI agent harness"
 
-const colorGreen = "\033[32m"
-const colorReset = "\033[0m"
-
 func Print() {
-	fmt.Print(colorGreen + Logo + colorReset + "\n")
+	fmt.Println(Logo)
 }
 
 func PrintWithTagline() {
 	Print()
-	fmt.Printf("  %s\n\n", Tagline)
+	fmt.Println(Tagline)
+	fmt.Println()
 }
 
 func PrintMinimal() {
-	fmt.Println("  EdCode — " + Tagline)
+	fmt.Println("EdCode - " + Tagline)
 }

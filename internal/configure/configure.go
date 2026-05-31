@@ -6,21 +6,21 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/edmundo/edcode/internal/banner"
-	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
 
 type ProviderDef struct {
-	Label       string
-	Name        string
-	BaseURL     string
+	Label        string
+	Name         string
+	BaseURL      string
 	DefaultModel string
-	NeedsKey    bool
-	IsCustom    bool
-	CustomName  string
+	NeedsKey     bool
+	IsCustom     bool
+	CustomName   string
 }
 
 var knownProviders = []ProviderDef{
@@ -28,7 +28,7 @@ var knownProviders = []ProviderDef{
 	{Label: "Anthropic", Name: "anthropic", BaseURL: "https://api.anthropic.com/v1", DefaultModel: "claude-sonnet-4-20250514", NeedsKey: true},
 	{Label: "OpenRouter", Name: "openrouter", BaseURL: "https://openrouter.ai/api/v1", DefaultModel: "anthropic/claude-sonnet-4-20250514", NeedsKey: true},
 	{Label: "Ollama (local)", Name: "ollama", BaseURL: "http://localhost:11434/v1", DefaultModel: "llama3", NeedsKey: false},
-	{Label: "Custom OpenAI-compatible (LiteLLM, vLLM, etc.)", Name: "", BaseURL: "", DefaultModel: "gpt-4o", NeedsKey: false, IsCustom: true},
+	{Label: "Custom OpenAI-compatible", Name: "", BaseURL: "", DefaultModel: "gpt-4o", NeedsKey: false, IsCustom: true},
 }
 
 func Run() error {
@@ -36,13 +36,16 @@ func Run() error {
 
 	existing, _ := loadExistingConfig()
 
+	fmt.Println()
 	banner.Print()
-	fmt.Println("  ── Provider Setup ──")
-	fmt.Println("")
+	fmt.Println()
+	fmt.Println("  Provider Setup")
+	fmt.Println("  ===============")
+	fmt.Println()
 
-	selected := multiSelect("Select providers to configure (↑↓ navigate, space toggle, enter confirm):", knownProviders)
+	selected := multiSelect("Select providers to configure:", knownProviders)
 	if len(selected) == 0 {
-		fmt.Println("No providers selected.")
+		fmt.Println("  No providers selected.")
 		agentConfig(reader, existing, nil)
 		if err := writeConfig(existing); err != nil {
 			return fmt.Errorf("write config: %w", err)
@@ -61,9 +64,9 @@ func Run() error {
 		return fmt.Errorf("write config: %w", err)
 	}
 
-	fmt.Println("")
-	fmt.Println("✅ Configuration saved to edcode.yaml")
-	fmt.Println("")
+	fmt.Println()
+	fmt.Println("  Configuration saved to edcode.yaml")
+	fmt.Println()
 	return nil
 }
 
@@ -80,8 +83,9 @@ func loadExistingConfig() (map[string]any, error) {
 }
 
 func configureProvider(reader *bufio.Reader, def ProviderDef, cfg map[string]any) {
-	fmt.Println("")
-	fmt.Println("── " + def.Label + " ──")
+	fmt.Println()
+	fmt.Println("  Provider: " + def.Label)
+	fmt.Println()
 
 	providers := ensureMap(cfg, "providers")
 
@@ -105,7 +109,7 @@ func configureProvider(reader *bufio.Reader, def ProviderDef, cfg map[string]any
 		} else if existingKey != "" {
 			entry["api_key"] = existingKey
 		} else {
-			fmt.Println("  ⚠ No API key provided. Set the " + strings.ToUpper(def.Name) + "_API_KEY environment variable later.")
+			fmt.Println("  No API key provided. Set " + strings.ToUpper(def.Name) + "_API_KEY environment variable later.")
 		}
 	}
 
@@ -125,7 +129,7 @@ func configureProvider(reader *bufio.Reader, def ProviderDef, cfg map[string]any
 }
 
 func configureCustom(reader *bufio.Reader, providers map[string]any) {
-	name := promptInput(reader, "  Custom provider name (e.g. litellm, vllm, my-company): ")
+	name := promptInput(reader, "  Custom provider name (e.g. litellm, vllm): ")
 	if name == "" {
 		fmt.Println("  Skipping custom provider.")
 		return
@@ -162,7 +166,7 @@ func configureCustom(reader *bufio.Reader, providers map[string]any) {
 			entry["models"] = discovered
 		}
 	} else {
-		fmt.Println("  Could not auto-discover models. You can add them manually to edcode.yaml.")
+		fmt.Println("  Could not auto-discover models. Add them manually to edcode.yaml.")
 	}
 }
 
@@ -298,10 +302,12 @@ func addModelID(m any, providerName string, models *[]string, seen *map[string]b
 }
 
 func agentConfig(reader *bufio.Reader, cfg map[string]any, availableModels []string) {
-	fmt.Println("")
+	fmt.Println()
 	banner.Print()
-	fmt.Println("  ── Agent Configuration ──")
-	fmt.Println("")
+	fmt.Println()
+	fmt.Println("  Agent Configuration")
+	fmt.Println("  ====================")
+	fmt.Println()
 
 	agents := ensureMap(cfg, "agents")
 
@@ -315,7 +321,7 @@ func agentConfig(reader *bufio.Reader, cfg map[string]any, availableModels []str
 	for i, m := range availableModels {
 		fmt.Printf("    %d. %s\n", i+1, m)
 	}
-	fmt.Println("")
+	fmt.Println()
 
 	for _, a := range mandatoryAgents {
 		existing := ensureMap(agents, a.Name)
@@ -337,22 +343,22 @@ func agentConfig(reader *bufio.Reader, cfg map[string]any, availableModels []str
 func pickModel(reader *bufio.Reader, entry map[string]any, agentName string, models []string) {
 	if len(models) == 1 {
 		entry["model"] = models[0]
-		fmt.Printf("    → Using only available model %q for %q\n", models[0], agentName)
+		fmt.Printf("  Using only available model %q for %q\n", models[0], agentName)
 		return
 	}
 	for i, m := range models {
-		fmt.Printf("      %d. %s\n", i+1, m)
+		fmt.Printf("    %d. %s\n", i+1, m)
 	}
-	fmt.Print("    Choice [1]: ")
+	fmt.Print("  Choice [1]: ")
 	text, _ := reader.ReadString('\n')
 	text = strings.TrimSpace(text)
 	var idx int
 	if _, err := fmt.Sscanf(text, "%d", &idx); err == nil && idx >= 1 && idx <= len(models) {
 		entry["model"] = models[idx-1]
-		fmt.Printf("    → \"%s\" assigned to %q\n", models[idx-1], agentName)
+		fmt.Printf("  Assigned %q to %q\n", models[idx-1], agentName)
 	} else {
 		entry["model"] = models[0]
-		fmt.Printf("    → Using default: %q\n", models[0])
+		fmt.Printf("  Using default: %q\n", models[0])
 	}
 }
 
@@ -377,161 +383,35 @@ func promptBool(reader *bufio.Reader, prompt string, def bool) bool {
 }
 
 func multiSelect(prompt string, items []ProviderDef) []ProviderDef {
-	fd := int(os.Stdin.Fd())
-	oldState, err := term.MakeRaw(fd)
-	if err != nil {
-		return fallbackMultiSelect(prompt, items)
-	}
-	defer term.Restore(fd, oldState)
-
-	selected := make([]bool, len(items))
-	cursor := 0
-
-	fmt.Print("\033[?25l") // hide cursor
-	fmt.Print("\033[H\033[J") // clear screen
-
-	// Static header — printed once, never redrawn
-	banner.Print()
-	fmt.Println("")
-	fmt.Println(prompt)
-	fmt.Println("  \u2191\u2193 navigate  [Space] toggle  [Enter] confirm  [q] quit")
-	fmt.Println("")
-
-	// Save cursor position (at start of list area)
-	fmt.Print("\033[s")
-
-	drawList := func() string {
-		var out string
-		for i, p := range items {
-			checkbox := " "
-			if selected[i] {
-				checkbox = "x"
-			}
-			marker := " "
-			if i == cursor {
-				marker = ">"
-			}
-			label := p.Label
-			if p.IsCustom {
-				label += " (custom)"
-			}
-			out += fmt.Sprintf(" %s [%s] %s\n", marker, checkbox, label)
-		}
-		out += fmt.Sprintf(" %d selected", countSelected(selected))
-		return out
-	}
-
-	// Initial draw
-	lines := drawList()
-	fmt.Print(lines)
-
-	buf := make([]byte, 3)
-	for {
-		n, err := os.Stdin.Read(buf)
-		if err != nil || n == 0 {
-			break
-		}
-
-		changed := false
-
-		// Ctrl+C or Ctrl+D
-		if buf[0] == 3 || buf[0] == 4 {
-			fmt.Print("\033[?25h")
-			fmt.Print("\033[u\033[J")
-			fmt.Println("")
-			os.Exit(1)
-		}
-
-		switch {
-		case buf[0] == 13 || buf[0] == 10: // enter
-			fmt.Print("\033[?25h") // show cursor
-			var result []ProviderDef
-			for i, sel := range selected {
-				if sel {
-					result = append(result, items[i])
-				}
-			}
-			// Clear list from screen and move past it
-			fmt.Print("\033[u\033[J")
-			return result
-
-		case buf[0] == 27 && n == 1: // escape alone
-			fmt.Print("\033[?25h")
-			fmt.Print("\033[u\033[J")
-			return nil
-
-		case buf[0] == 27 && n >= 3:
-			fmt.Print("\033[?25h") // show cursor
-			var result []ProviderDef
-			for i, sel := range selected {
-				if sel {
-					result = append(result, items[i])
-				}
-			}
-			// Clear list from screen and move past it
-			fmt.Print("\033[u\033[J")
-			return result
-
-		case buf[0] == 27 && n >= 3:
-			if buf[1] == 91 {
-				switch buf[2] {
-				case 65: // up
-					if cursor > 0 {
-						cursor--
-						changed = true
-					}
-				case 66: // down
-					if cursor < len(items)-1 {
-						cursor++
-						changed = true
-					}
-				}
-			}
-
-		case buf[0] == 32: // space
-			selected[cursor] = !selected[cursor]
-			changed = true
-
-		case buf[0] == 113 || buf[0] == 81: // q
-			fmt.Print("\033[?25h")
-			fmt.Print("\033[u\033[J")
-			return nil
-		}
-
-		if changed {
-			lines = drawList()
-			fmt.Print("\033[u\033[J") // restore to saved pos, clear to end
-			fmt.Print(lines)
-		}
-	}
-
-	fmt.Print("\033[?25h")
-	return nil
-}
-
-func countSelected(sel []bool) int {
-	count := 0
-	for _, s := range sel {
-		if s {
-			count++
-		}
-	}
-	return count
-}
-
-func fallbackMultiSelect(prompt string, items []ProviderDef) []ProviderDef {
+	// Simple non-interactive fallback that works reliably in all terminals
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Println(prompt)
-	fmt.Println("  (enter the numbers separated by commas, e.g. 1,3,5)")
 
-	for i, p := range items {
-		label := fmt.Sprintf("  %d. %s", i+1, p.Label)
+	fmt.Println()
+	fmt.Println(prompt)
+	fmt.Println()
+
+	// Calculate max label length for alignment
+	maxLabelLen := 0
+	for _, p := range items {
+		label := p.Label
 		if p.IsCustom {
 			label += " (custom)"
 		}
-		fmt.Println(label)
+		if len(label) > maxLabelLen {
+			maxLabelLen = len(label)
+		}
 	}
-	fmt.Print("  Choice(s): ")
+
+	for i, p := range items {
+		label := p.Label
+		if p.IsCustom {
+			label += " (custom)"
+		}
+		padded := label + strings.Repeat(" ", maxLabelLen-len(label))
+		fmt.Printf("  [%d] %s\n", i+1, padded)
+	}
+	fmt.Println()
+	fmt.Print("  Enter numbers to select (comma-separated, e.g. 1,3): ")
 	text, _ := reader.ReadString('\n')
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -542,10 +422,20 @@ func fallbackMultiSelect(prompt string, items []ProviderDef) []ProviderDef {
 	var selected []ProviderDef
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
-		var idx int
-		if _, err := fmt.Sscanf(part, "%d", &idx); err == nil && idx >= 1 && idx <= len(items) {
+		idx, err := strconv.Atoi(part)
+		if err == nil && idx >= 1 && idx <= len(items) {
 			selected = append(selected, items[idx-1])
 		}
 	}
 	return selected
+}
+
+func countSelected(sel []bool) int {
+	count := 0
+	for _, s := range sel {
+		if s {
+			count++
+		}
+	}
+	return count
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/edmundo/edcode/internal/banner"
 	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
@@ -35,10 +36,8 @@ func Run() error {
 
 	existing, _ := loadExistingConfig()
 
-	fmt.Println("")
-	fmt.Println("╔══════════════════════════════════════════╗")
-	fmt.Println("║        Edcode Provider Setup             ║")
-	fmt.Println("╚══════════════════════════════════════════╝")
+	banner.Print()
+	fmt.Println("  ── Provider Setup ──")
 	fmt.Println("")
 
 	selected := multiSelect("Select providers to configure (↑↓ navigate, space toggle, enter confirm):", knownProviders)
@@ -300,7 +299,8 @@ func addModelID(m any, providerName string, models *[]string, seen *map[string]b
 
 func agentConfig(reader *bufio.Reader, cfg map[string]any, availableModels []string) {
 	fmt.Println("")
-	fmt.Println("── Agent Configuration ──")
+	banner.Print()
+	fmt.Println("  ── Agent Configuration ──")
 	fmt.Println("")
 
 	agents := ensureMap(cfg, "agents")
@@ -387,18 +387,22 @@ func multiSelect(prompt string, items []ProviderDef) []ProviderDef {
 	selected := make([]bool, len(items))
 	cursor := 0
 
-	// Hide cursor during interaction
-	fmt.Print("\033[?25l")
+	fmt.Print("\033[?25l") // hide cursor
+	fmt.Print("\033[H\033[J") // clear screen
 
-	// Print the static header once
-	fmt.Print("\033[H\033[J") // clear once
+	// Static header — printed once, never redrawn
+	banner.Print()
+	fmt.Println("")
 	fmt.Println(prompt)
 	fmt.Println("  \u2191\u2193 navigate  [Space] toggle  [Enter] confirm  [q] quit")
 	fmt.Println("")
 
-	drawList := func() {
+	// Save cursor position (at start of list area)
+	fmt.Print("\033[s")
+
+	drawList := func() string {
+		var out string
 		for i, p := range items {
-			fmt.Print("\033[G\033[K") // move to col 0, clear line
 			checkbox := " "
 			if selected[i] {
 				checkbox = "x"
@@ -411,16 +415,15 @@ func multiSelect(prompt string, items []ProviderDef) []ProviderDef {
 			if p.IsCustom {
 				label += " (custom)"
 			}
-			fmt.Printf(" %s [%s] %s\n", marker, checkbox, label)
+			out += fmt.Sprintf(" %s [%s] %s\n", marker, checkbox, label)
 		}
-		fmt.Print("\033[G\033[K")
-		fmt.Printf(" %d selected\n", countSelected(selected))
+		out += fmt.Sprintf(" %d selected", countSelected(selected))
+		return out
 	}
 
-	// Move cursor below the list for future redraws
-	cursorUp := len(items) + 2 // items + blank line + count line
-
-	drawList()
+	// Initial draw
+	lines := drawList()
+	fmt.Print(lines)
 
 	buf := make([]byte, 3)
 	for {
@@ -430,6 +433,15 @@ func multiSelect(prompt string, items []ProviderDef) []ProviderDef {
 		}
 
 		changed := false
+
+		// Ctrl+C or Ctrl+D
+		if buf[0] == 3 || buf[0] == 4 {
+			fmt.Print("\033[?25h")
+			fmt.Print("\033[u\033[J")
+			fmt.Println("")
+			os.Exit(1)
+		}
+
 		switch {
 		case buf[0] == 13 || buf[0] == 10: // enter
 			fmt.Print("\033[?25h") // show cursor
@@ -439,11 +451,25 @@ func multiSelect(prompt string, items []ProviderDef) []ProviderDef {
 					result = append(result, items[i])
 				}
 			}
-			// Clear the list from screen
-			for i := 0; i < cursorUp; i++ {
-				fmt.Print("\033[F\033[K")
+			// Clear list from screen and move past it
+			fmt.Print("\033[u\033[J")
+			return result
+
+		case buf[0] == 27 && n == 1: // escape alone
+			fmt.Print("\033[?25h")
+			fmt.Print("\033[u\033[J")
+			return nil
+
+		case buf[0] == 27 && n >= 3:
+			fmt.Print("\033[?25h") // show cursor
+			var result []ProviderDef
+			for i, sel := range selected {
+				if sel {
+					result = append(result, items[i])
+				}
 			}
-			fmt.Print("\033[J")
+			// Clear list from screen and move past it
+			fmt.Print("\033[u\033[J")
 			return result
 
 		case buf[0] == 27 && n >= 3:
@@ -468,17 +494,14 @@ func multiSelect(prompt string, items []ProviderDef) []ProviderDef {
 
 		case buf[0] == 113 || buf[0] == 81: // q
 			fmt.Print("\033[?25h")
-			for i := 0; i < cursorUp; i++ {
-				fmt.Print("\033[F\033[K")
-			}
-			fmt.Print("\033[J")
+			fmt.Print("\033[u\033[J")
 			return nil
 		}
 
 		if changed {
-			// Move cursor up to the list start and redraw
-			fmt.Printf("\033[%dA", cursorUp)
-			drawList()
+			lines = drawList()
+			fmt.Print("\033[u\033[J") // restore to saved pos, clear to end
+			fmt.Print(lines)
 		}
 	}
 

@@ -1,5 +1,19 @@
 # Edcode
 
+```
+________  _______          ______    ______   _______   ________
+|        \|       \        /      \  /      \ |       \ |        \
+| $$$$$$$$| $$$$$$$\      |  $$$$$$\|  $$$$$$\| $$$$$$$\| $$$$$$$$
+| $$__    | $$  | $$      | $$   \$$| $$  | $$| $$  | $$| $$
+| $$  \   | $$  | $$      | $$      | $$  | $$| $$  | $$| $$  \
+| $$$$$   | $$  | $$      | $$   __ | $$  | $$| $$  | $$| $$$$$
+| $$_____ | $$__/ $$      | $$__/  \| $$__/ $$| $$__/ $$| $$_____
+| $$     \| $$    $$       \$$    $$ \$$    $$| $$    $$| $$     \
+ \$$$$$$$$ \$$$$$$$         \$$$$$$   \$$$$$$  \$$$$$$$  \$$$$$$$
+```
+
+your AI agent harness
+
 A modular, pluggable AI agent harness in Go with multi-model routing, pipeline execution, MCP tool integration, persistent memory, context compaction, and auto-enhancement.
 
 ## Architecture
